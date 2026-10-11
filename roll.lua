@@ -12,10 +12,12 @@ local autoRollEnabled = true
 local autoBuyEnabled = true
 local autoTpEnabled = true
 local antiAfkEnabled = true
-local targetRarity = "Omnipotent"
+local targetRarity = "Boundless"
 local spinDelay = 5
 local lastSecretTime = 0
 local SECRET_COOLDOWN = 5
+local statusLocked = false
+local statusLockUntil = 0
 
 LocalPlayer.Idled:Connect(function()
     if antiAfkEnabled then
@@ -503,20 +505,30 @@ task.spawn(function()
                 originalCFrame = char.HumanoidRootPart.CFrame
             end
 
+            local canUpdateStatus = not statusLocked or tick() > statusLockUntil
+
             if autoRollEnabled then
-                status.Text = "Estado: Presionando 'E' para girar..."
+                if canUpdateStatus then
+                    status.Text = "Estado: Presionando 'E' para girar..."
+                end
                 pressE()
             end
             task.wait(spinDelay)
 
             if autoBuyEnabled then
                 if tick() - lastSecretTime > SECRET_COOLDOWN then
-                    status.Text = "Estado: Buscando 'Omnipotent'..."
+                    if canUpdateStatus then
+                        status.Text = "Estado: Buscando 'Boundless'..."
+                    end
                     local tankModel = findSecretTank()
 
                     if tankModel then
                         lastSecretTime = tick()
-                        status.Text = "Estado: ¡OMNIPOTENT! Procesando..."
+
+                        statusLocked = true
+                        statusLockUntil = tick() + 5
+
+                        status.Text = "Estado: ¡BOUNDLESS! Procesando..."
 
                         local targetPos = nil
                         if tankModel:IsA("Model") then
@@ -554,11 +566,17 @@ task.spawn(function()
 
                         status.Text = "Estado: ¡Compra completada!"
                         task.wait(SECRET_COOLDOWN)
+
+                        statusLocked = false
                     else
-                        status.Text = "Estado: No es Omnipotent."
+                        if canUpdateStatus then
+                            status.Text = "Estado: No es Boundless."
+                        end
                     end
                 else
-                    status.Text = "Estado: Cooldown..."
+                    if canUpdateStatus then
+                        status.Text = "Estado: Cooldown..."
+                    end
                 end
             end
 
