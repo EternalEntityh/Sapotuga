@@ -19,6 +19,36 @@ local SECRET_COOLDOWN = 5
 local statusLocked = false
 local statusLockUntil = 0
 
+-- ═══════════════ SELECTOR DE TANQUES ═══════════════
+-- id = valor del atributo RobotId (en minúsculas)
+local TANKS = {
+    {id = "boundless_abductor", name = "Abductor"},
+    {id = "boundless_tuskbreaker", name = "Tuskbreaker"},
+    {id = "boundless_kernel_panic", name = "Kernel Panic"},
+    {id = "boundless_desync", name = "Desync"},
+    {id = "boundless_sky_pirate", name = "Sky Pirate"},
+}
+
+local selectedTanks = {}
+for _, t in ipairs(TANKS) do
+    selectedTanks[t.id] = true -- por defecto todos activados
+end
+
+local function selectedCount()
+    local n = 0
+    for _, t in ipairs(TANKS) do
+        if selectedTanks[t.id] then n += 1 end
+    end
+    return n
+end
+
+local function setAllTanks(value)
+    for _, t in ipairs(TANKS) do
+        selectedTanks[t.id] = value
+    end
+end
+-- ═══════════════════════════════════════════════════
+
 LocalPlayer.Idled:Connect(function()
     if antiAfkEnabled then
         VirtualUser:CaptureController()
@@ -47,6 +77,7 @@ local WHITE = Color3.fromRGB(255, 255, 255)
 local GOLD = Color3.fromRGB(226, 186, 64)
 local GOLD_LIGHT = Color3.fromRGB(246, 221, 133)
 local GOLD_DARK = Color3.fromRGB(150, 106, 12)
+local GOLD_SOFT = Color3.fromRGB(252, 244, 214)
 local SILVER = Color3.fromRGB(192, 196, 204)
 local SILVER_LIGHT = Color3.fromRGB(236, 238, 243)
 local SILVER_DARK = Color3.fromRGB(120, 126, 138)
@@ -162,7 +193,7 @@ screenGui.Name = "SapotugaRoll"
 screenGui.ResetOnSpawn = false
 
 local frame = make("Frame", {
-    Size = UDim2.new(0, 290, 0, 424),
+    Size = UDim2.new(0, 290, 0, 552), -- antes 424: crece para el selector
     Position = UDim2.new(0, 20, 0, 20),
     BackgroundColor3 = WHITE,
     Active = true,
@@ -337,8 +368,111 @@ newToggle("Auto-Compra", 166, function() return autoBuyEnabled end, function() a
 newToggle("Auto-TP", 208, function() return autoTpEnabled end, function() autoTpEnabled = not autoTpEnabled end)
 newToggle("Anti-AFK", 250, function() return antiAfkEnabled end, function() antiAfkEnabled = not antiAfkEnabled end)
 
+-- ═══════════════ SELECTOR DE TANQUES (UI) ═══════════════
+local selector = make("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0, 339),
+    Size = UDim2.new(1, -32, 0, 118),
+    BackgroundTransparency = 1,
+}, frame)
+
+make("TextLabel", {
+    Position = UDim2.new(0, 2, 0, 0),
+    Size = UDim2.new(0.7, 0, 0, 18),
+    BackgroundTransparency = 1,
+    Text = "Tanque a comprar",
+    TextColor3 = INK,
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, selector)
+
+local countLabel = make("TextLabel", {
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -2, 0, 0),
+    Size = UDim2.new(0.3, 0, 0, 18),
+    BackgroundTransparency = 1,
+    Text = "",
+    TextColor3 = GOLD_DARK,
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Right,
+}, selector)
+
+local chipPainters = {}
+
+local function refreshChips(time)
+    countLabel.Text = selectedCount() .. "/" .. #TANKS
+    for _, paint in ipairs(chipPainters) do
+        paint(time)
+    end
+end
+
+local CHIP_BASE = UDim2.new(0.5, -3, 0, 28)
+local CHIP_BIG = UDim2.new(0.5, 0, 0, 30)
+local CHIP_SMALL = UDim2.new(0.5, -8, 0, 26)
+
+local function newChip(text, col, row, getState, flip)
+    local chip = make("TextButton", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(col == 0 and 0.25 or 0.75, 0, 0, 36 + row * 34),
+        Size = CHIP_BASE,
+        BackgroundColor3 = PANEL_SOFT,
+        AutoButtonColor = false,
+        Font = Enum.Font.GothamBold,
+        TextSize = 11,
+        TextColor3 = SILVER_DARK,
+        Text = text,
+    }, selector)
+    round(chip, 8)
+    local chipStroke = stroke(chip, SILVER, 1.2)
+
+    local function paint(time)
+        local on = getState()
+        chip.Text = (on and "✓ " or "") .. text
+        tween(chip, time, {
+            BackgroundColor3 = on and GOLD_SOFT or PANEL_SOFT,
+            TextColor3 = on and GOLD_DARK or SILVER_DARK,
+        })
+        tween(chipStroke, time, {Color = on and GOLD or SILVER})
+    end
+    table.insert(chipPainters, paint)
+
+    hoverFx(chip, CHIP_BASE, CHIP_BIG, CHIP_SMALL, function()
+        tween(chipStroke, 0.15, {Color = GOLD_LIGHT, Thickness = 1.8})
+    end, function()
+        tween(chipStroke, 0.15, {Color = getState() and GOLD or SILVER, Thickness = 1.2})
+    end)
+
+    chip.MouseButton1Click:Connect(function()
+        flip()
+        refreshChips(0.2)
+    end)
+    return chip
+end
+
+for i, tank in ipairs(TANKS) do
+    local idx = i - 1
+    newChip(tank.name, idx % 2, math.floor(idx / 2), function()
+        return selectedTanks[tank.id]
+    end, function()
+        selectedTanks[tank.id] = not selectedTanks[tank.id]
+    end)
+end
+
+-- botón "Todos": si ya están todos marcados, los desmarca; si no, marca todos
+newChip("Todos", 1, 2, function()
+    return selectedCount() == #TANKS
+end, function()
+    setAllTanks(selectedCount() ~= #TANKS)
+end)
+
+refreshChips(0)
+table.insert(rows, selector)
+-- ═════════════════════════════════════════════════════════
+
 -- boton iniciar
-local startBtn = newButton(309, 50)
+local startBtn = newButton(437, 50)
 startBtn.Parent = frame
 
 local startFace = make("Frame", {
@@ -368,7 +502,7 @@ table.insert(rows, startBtn)
 
 -- estado
 local statusCard = make("Frame", {
-    Position = UDim2.new(0, 16, 0, 348),
+    Position = UDim2.new(0, 16, 0, 476),
     Size = UDim2.new(1, -32, 0, 62),
     BackgroundColor3 = PANEL_SOFT,
 }, frame)
@@ -436,47 +570,83 @@ local function pressE()
     end)
 end
 
-local function findSecretTank()
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BillboardGui") then
-            for _, label in pairs(obj:GetDescendants()) do
-                if label:IsA("TextLabel") and label.Text:lower():find(targetRarity:lower()) then
-                    local parent = obj.Parent
-                    while parent and parent ~= workspace do
-                        if parent:IsA("Model") then
-                            return parent
-                        end
-                        parent = parent.Parent
-                    end
-                    if obj.Adornee then
-                        if obj.Adornee:IsA("BasePart") then
-                            return obj.Adornee
-                        elseif obj.Adornee:IsA("Attachment") then
-                            return obj.Adornee
+-- Busca el tanque que salió en los pedestales: modelos dentro de una carpeta
+-- "RollPresentationModels" (Plot_X.Machinery.RollPedestalN...), cerca de ti.
+-- IGNORA a propósito:
+--   * Workspace.RollCandidateCache (caché con copias de TODOS los tanques, bajo el mapa)
+--   * Machinery.FuseMachine.FuseVisuals (decoración de la fusionadora)
+--   * Plot_X.RuntimeRobots (tus robots ya comprados)
+-- Devuelve: (modelo_deseado, nombre) o (nil, nombre_ignorado) o (nil, nil)
+local MAX_PLOT_DISTANCE = 250
+
+local function findWantedTank()
+    local playable = workspace:FindFirstChild("playable")
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not playable or not hrp then return nil, nil end
+
+    local ignoredName = nil
+    for _, plot in ipairs(playable:GetChildren()) do
+        local machinery = plot:FindFirstChild("Machinery")
+        if machinery then
+            for _, obj in ipairs(machinery:GetDescendants()) do
+                if obj:IsA("Model")
+                    and obj.Parent and obj.Parent.Name == "RollPresentationModels"
+                    and obj:GetAttribute("Rarity") == targetRarity then
+                    local okPos, cf = pcall(function() return obj:GetPivot() end)
+                    -- solo los de TU plot (los pedestales cercanos a ti)
+                    if okPos and (cf.Position - hrp.Position).Magnitude <= MAX_PLOT_DISTANCE then
+                        local id = string.lower(tostring(obj:GetAttribute("RobotId") or ""))
+                        local name = obj:GetAttribute("DisplayName") or id
+                        if selectedTanks[id] then
+                            return obj, name
+                        else
+                            ignoredName = name
                         end
                     end
                 end
             end
         end
     end
-    return nil
+    return nil, ignoredName
 end
 
+-- TP seguro: solo teletransporta si el destino tiene suelo debajo y no está en el vacío
 local function teleportTo(position)
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-    char.HumanoidRootPart.CFrame = CFrame.new(position + Vector3.new(0, 3, 0))
+
+    -- 1) por debajo de la altura donde Roblox destruye partes = vacío seguro
+    if position.Y < workspace.FallenPartsDestroyHeight + 50 then
+        return false
+    end
+
+    -- 2) debe haber suelo bajo el destino
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {char}
+    local ground = workspace:Raycast(position + Vector3.new(0, 5, 0), Vector3.new(0, -60, 0), params)
+    if not ground then
+        return false
+    end
+
+    char.HumanoidRootPart.CFrame = CFrame.new(ground.Position + Vector3.new(0, 4, 0))
     return true
 end
 
 local function fireProximityPrompt(tankModel)
     if not tankModel then return false end
 
-    local prompt = nil
-    if tankModel:IsA("Model") then
-        prompt = tankModel:FindFirstChildWhichIsA("ProximityPrompt", true)
-    elseif tankModel:IsA("BasePart") or tankModel:IsA("Attachment") then
-        prompt = tankModel:FindFirstChildWhichIsA("ProximityPrompt", true)
+    local prompt = tankModel:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not prompt then
+        -- el prompt probablemente está en el pedestal (RollPedestalN), no en el modelo
+        local ped = tankModel.Parent
+        while ped and ped ~= workspace and not string.match(ped.Name, "^RollPedestal") do
+            ped = ped.Parent
+        end
+        if ped and ped ~= workspace then
+            prompt = ped:FindFirstChildWhichIsA("ProximityPrompt", true)
+        end
     end
 
     if prompt then
@@ -516,11 +686,15 @@ task.spawn(function()
             task.wait(spinDelay)
 
             if autoBuyEnabled then
-                if tick() - lastSecretTime > SECRET_COOLDOWN then
+                if selectedCount() == 0 then
                     if canUpdateStatus then
-                        status.Text = "Estado: Buscando 'Boundless'..."
+                        status.Text = "Estado: Elige al menos un tanque."
                     end
-                    local tankModel = findSecretTank()
+                elseif tick() - lastSecretTime > SECRET_COOLDOWN then
+                    if canUpdateStatus then
+                        status.Text = "Estado: Buscando tanque seleccionado..."
+                    end
+                    local tankModel, tankName = findWantedTank()
 
                     if tankModel then
                         lastSecretTime = tick()
@@ -528,7 +702,7 @@ task.spawn(function()
                         statusLocked = true
                         statusLockUntil = tick() + 5
 
-                        status.Text = "Estado: ¡BOUNDLESS! Procesando..."
+                        status.Text = "Estado: ¡" .. tostring(tankName) .. "! Procesando..."
 
                         local targetPos = nil
                         if tankModel:IsA("Model") then
@@ -543,13 +717,17 @@ task.spawn(function()
                             targetPos = tankModel.WorldPosition
                         end
 
+                        local tpOk = false
                         if targetPos and autoTpEnabled then
                             status.Text = "Estado: Teletransportando..."
-                            teleportTo(targetPos)
+                            tpOk = teleportTo(targetPos)
+                            if not tpOk then
+                                status.Text = "Estado: TP cancelado (destino sin suelo)"
+                            end
                             task.wait(0.8)
                         end
 
-                        status.Text = "Estado: Comprando..."
+                        status.Text = "Estado: Comprando " .. tostring(tankName) .. "..."
                         local bought = fireProximityPrompt(tankModel)
                         if not bought then
                             pressE()
@@ -559,7 +737,7 @@ task.spawn(function()
 
                         task.wait(0.5)
 
-                        if autoTpEnabled and originalCFrame and char and char:FindFirstChild("HumanoidRootPart") then
+                        if tpOk and originalCFrame and char and char:FindFirstChild("HumanoidRootPart") then
                             status.Text = "Estado: Volviendo..."
                             char.HumanoidRootPart.CFrame = originalCFrame
                         end
@@ -570,7 +748,11 @@ task.spawn(function()
                         statusLocked = false
                     else
                         if canUpdateStatus then
-                            status.Text = "Estado: No es Boundless."
+                            if tankName then
+                                status.Text = "Estado: " .. tostring(tankName) .. " ignorado (no seleccionado)."
+                            else
+                                status.Text = "Estado: No salió un " .. targetRarity .. "."
+                            end
                         end
                     end
                 else
